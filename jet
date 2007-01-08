@@ -1,0 +1,69 @@
+#!/usr/bin/perl
+
+# Version 0.1.0
+use strict;
+use Net::SSH::Perl::Config;
+
+my $dir = "$ENV{HOME}/.jet";
+
+sub build_cache {
+	my %ex;
+	my $key;
+	open(BH, '<', "$ENV{HOME}/.bash_history");
+	open(CA, '>', "$dir/cache");
+	while(<BH>) {
+		if($_ =~ /(ssh|scp|sftp)\s+(\w+)\@([\w.]+)/i) {
+			$key = "$2,$3\n";
+			if(!exists $ex{$key}) {
+				$ex{$key} = 1;	
+				print CA "$key";
+			}
+		}
+	}
+	close(CA);
+	close(BH);
+}
+
+sub trigger {
+	my $h = Net::SSH::Perl::Config->new($_[0]);
+	$h->read_config("$ENV{HOME}/.ssh/config");
+	print "Trying " . $h->get('user') . "\@$_[0]...\n";
+	exec("/usr/bin/ssh $_[0]");
+	exit;
+}
+
+unless(-d $dir) {
+	mkdir($dir, 0700);
+	&build_cache;
+}
+
+my ($m, @m) = 0;
+open(KH, '<', "$ENV{HOME}/.ssh/known_hosts");
+while(<KH>) {
+	s/,/ /;
+	split;
+	$m = push(@m, $_[0]) if $_[0] =~ $ARGV[0];
+}
+close(KH);
+
+if($m == 0) {
+	print "No match\n";
+	exit;
+} elsif($m == 1) {
+	&trigger($m[0]);
+} else {
+	@m = sort(@m);
+	my ($c, $ch);
+	print "$m matches:\n---\n";
+	foreach(@m) {
+		$c++;
+		print "[$c] $_\n";
+	}
+	print "---\n";
+	my $re = '^(' . join('|', (1..$m)) . ')$';
+	while($ch !~ /$re/) {
+		print "Enter your choice [1-$m]: ";
+		$ch = <STDIN>;
+	}
+	&trigger($m[--$ch]);
+}
