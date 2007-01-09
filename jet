@@ -1,41 +1,33 @@
 #!/usr/bin/perl
 
-# Version 0.1.0
+# Version 0.1.1
 use strict;
+
+use Getopt::Std;
 use Net::SSH::Perl::Config;
 
 my $dir = "$ENV{HOME}/.jet";
 
-sub build_cache {
-	my %ex;
-	my $key;
-	open(BH, '<', "$ENV{HOME}/.bash_history");
-	open(CA, '>', "$dir/cache");
-	while(<BH>) {
-		if($_ =~ /(ssh|scp|sftp)\s+(\w+)\@([\w.]+)/i) {
-			$key = "$2,$3\n";
-			if(!exists $ex{$key}) {
-				$ex{$key} = 1;	
-				print CA "$key";
-			}
-		}
-	}
-	close(CA);
-	close(BH);
-}
+my %o;
+getopts('al:', \%o);
 
 sub trigger {
-	my $h = Net::SSH::Perl::Config->new($_[0]);
-	$h->read_config("$ENV{HOME}/.ssh/config");
-	print "Trying " . $h->get('user') . "\@$_[0]...\n";
-	exec("/usr/bin/ssh $_[0]");
+	my $u;
+	if($o{'l'}) {
+		$u = $o{'l'};
+	} else {
+		my $h = Net::SSH::Perl::Config->new($_[0]);
+		$h->read_config("$ENV{HOME}/.ssh/config");
+		$u = $h->get('user');
+	}
+	print "Trying $u\@$_[0]...\n";
+	exec("/usr/bin/ssh -l $u $_[0]");
 	exit;
 }
 
-unless(-d $dir) {
-	mkdir($dir, 0700);
-	&build_cache;
-}
+mkdir($dir, 0700) unless(-d $dir);
+
+&trigger($ARGV[0]) if $o{'a'} == 1;
 
 my ($m, @m) = 0;
 open(KH, '<', "$ENV{HOME}/.ssh/known_hosts");
