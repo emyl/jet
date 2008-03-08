@@ -1,10 +1,12 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -w
 
-# Version 0.1.1
+# Version 0.2.0
 use strict;
 
 use Getopt::Std;
 use Net::SSH::Perl::Config;
+
+use constant SSH_BIN => '/usr/bin/ssh';
 
 my $dir = "$ENV{HOME}/.jet";
 
@@ -12,7 +14,7 @@ my %o;
 getopts('al:', \%o);
 
 sub trigger {
-	my $u;
+	my ($u, $s);
 	if($o{'l'}) {
 		$u = $o{'l'};
 	} else {
@@ -20,21 +22,34 @@ sub trigger {
 		$h->read_config("$ENV{HOME}/.ssh/config");
 		$u = $h->get('user');
 	}
+	$s = ($_[0] =~ m/\./) ? $` : $_[0]; 
+	link(SSH_BIN, "$dir/$s");
 	print "Trying $u\@$_[0]...\n";
-	exec("/usr/bin/ssh -l $u $_[0]");
+	system("$dir/$s $u\@$_[0]");
 	exit;
 }
 
+sub clean {
+	my $f;
+	my @f_stat;
+	my @ssh_stat = stat(SSH_BIN);
+	while(defined($f = <$dir/*>)) {
+		@f_stat = stat($f);
+		unlink $f if $f_stat[1] == $ssh_stat[1];
+	}
+}			
+
 mkdir($dir, 0700) unless(-d $dir);
 
-&trigger($ARGV[0]) if $o{'a'} == 1;
+&clean if !int(rand(10));
+&trigger($ARGV[0]) if $o{'a'};
 
 my ($m, @m) = 0;
 open(KH, '<', "$ENV{HOME}/.ssh/known_hosts");
 while(<KH>) {
 	s/,/ /;
-	split;
-	$m = push(@m, $_[0]) if $_[0] =~ $ARGV[0];
+	my @l = split;
+	$m = push(@m, $l[0]) if $l[0] =~ $ARGV[0];
 }
 close(KH);
 
@@ -53,9 +68,9 @@ if($m == 0) {
 	}
 	print "---\n";
 	my $re = '^(' . join('|', (1..$m)) . ')$';
-	while($ch !~ /$re/) {
+	do {
 		print "Enter your choice [1-$m]: ";
 		$ch = <STDIN>;
-	}
+	} while($ch !~ /$re/);
 	&trigger($m[--$ch]);
 }
