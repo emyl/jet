@@ -1,27 +1,21 @@
 #!/usr/bin/perl -w
 
-# Version 0.2.0
 use strict;
 
 use Getopt::Std;
-use Net::SSH::Perl::Config;
 
 use constant SSH_BIN => '/usr/bin/ssh';
 
-my $dir = "$ENV{HOME}/.jet";
+$main::VERSION = '0.3.0';
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
 
+my $dir = "$ENV{HOME}/.jet";
 my %o;
 getopts('al:', \%o);
 
 sub trigger {
 	my ($u, $s);
-	if($o{'l'}) {
-		$u = $o{'l'};
-	} else {
-		my $h = Net::SSH::Perl::Config->new($_[0]);
-		$h->read_config("$ENV{HOME}/.ssh/config");
-		$u = $h->get('user');
-	}
+	($o{'l'}) ? $u = $o{'l'} : $u = &_rconf($_[0]);
 	$s = ($_[0] =~ m/\./) ? $` : $_[0]; 
 	link(SSH_BIN, "$dir/$s");
 	print "Trying $u\@$_[0]...\n";
@@ -39,6 +33,30 @@ sub clean {
 	}
 }			
 
+sub _rconf {
+	my $hostin = shift(@_);
+	my $user = $ENV{USER};
+	open(CFG, "$ENV{HOME}/.ssh/config");
+	my $hom = 0;
+	while(<CFG>) {
+        	next if !/\S/ || /^#/;
+        	my($key, $args) = $_ =~ /^\s*(\S+)\s+(.+)$/;
+        	next unless ($key && $args) && ($hom || ($key eq "Host"));
+        	if($key eq "Host") {
+                	(my $hostre = $args) =~ s/\*/.*/g;
+                	$hostre =~ s/\?/./g;
+                	$hom = 1 if($args eq "*" || $hostin =~ /^$hostre$/);
+        	} else {
+                	next unless $key eq "User";
+			$user = $args;
+                	last;
+        	}
+	}
+	close(CFG);
+	return $user;
+}
+
+#die $Getopt::Std::help_mess() unless $ARGV[0];
 mkdir($dir, 0700) unless(-d $dir);
 
 &clean if !int(rand(10));
