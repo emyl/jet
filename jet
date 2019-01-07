@@ -1,0 +1,99 @@
+#! /usr/bin/env python
+
+import argparse
+import os
+import signal
+import sys
+
+__version__ = '0.4.0'
+
+
+def banner(out):
+    message = """
+     __!__
+______(_)______
+    !  !  !
+      jet
+the ssh booster
+
+"""
+    out.write(message)
+
+
+def trigger(host, args):
+    command = [which('ssh')]
+    if args.l:
+        command += ['-l', args.l]
+    if args.s:
+        command += ['-o', 'StrictHostKeyChecking=no']
+    command += [host]
+
+    status = os.spawnv(os.P_WAIT, command[0], command)
+    sys.exit(status)
+
+
+def usage():
+    parser = argparse.ArgumentParser(
+        usage='%(prog)s [options] {pattern}'
+    )
+
+    parser.add_argument('-l', help='override username', metavar='<username>')
+    parser.add_argument('-s', action='store_true', help='skip host key verification')
+    parser.add_argument('-V', action='version', version="""
+        %(prog)s {version} ( https://github.com/emyl/jet )
+    """.format(version=__version__))
+    parser.add_argument('pattern', nargs='?', help='pattern to search')
+
+    return parser
+
+
+def which(program):
+    path = os.getenv('PATH')
+    if sys.platform == 'win32':
+        program += '.exe'
+    for p in path.split(os.path.pathsep):
+        p = os.path.join(p, program)
+        if os.path.exists(p) and os.access(p, os.X_OK):
+            return p
+
+
+def main():
+    signal.signal(signal.SIGINT, lambda signum, frame: sys.exit(0))
+    banner(sys.stdout)
+    parser = usage()
+    args = parser.parse_args()
+    if args.pattern:
+        results = []
+        with open('{home}/.ssh/known_hosts'.format(home=os.path.expanduser('~')), 'r') as kh:
+            for line in kh:
+                for host in line.split(' ')[0].split(','):
+                    if args.pattern in host:
+                        results.append(host)
+        results.sort()
+        if len(results) == 0:
+            print("No match")
+            sys.exit(1)
+        elif len(results) == 1:
+            trigger(results[0], args)
+        else:
+            print("Found %d hosts:\n" % len(results))
+            for index, host in enumerate(results):
+                print("[%d] %s" % (index + 1, host))
+            print("\n[0] exit\n")
+            while True:
+                try:
+                    choice = int(input("Enter your choice [1-%d]: " % len(results)))
+                    if choice == 0:
+                        break
+                    if 0 <= int(choice) <= len(results):
+                        trigger(results[int(choice) - 1], args)
+                except ValueError:
+                    pass
+            sys.exit(0)
+    else:
+        parser.print_help()
+        sys.exit(2)
+
+
+if __name__ == '__main__':
+    main()
